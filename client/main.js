@@ -68,6 +68,7 @@ const state = {
 const particles = [];
 const lastPlayerPositions = new Map();
 const sprayIntensity = new Map();
+const sprayDirtyHold = new Map();
 let lastFrameTime = performance.now();
 const dirtCellsOnTrack = new Uint8Array(GRID_SIZE * GRID_SIZE);
 const pendingDirtCells = new Set();
@@ -473,12 +474,12 @@ function dirtAt(x, y) {
 }
 
 function emitSpray(player, speed, dt, intensity, mode) {
-  if (speed < 25) return;
+  if (speed < 5 && mode === "dirty") return;
 
   const isDirty = mode === "dirty";
-  const intensityScale = isDirty ? 4.2 : 0.6;
-  const baseCount = (speed / 150 + intensity * intensityScale) * dt * 60;
-  const count = Math.min(16, Math.max(isDirty ? 3 : 1, Math.floor(baseCount)));
+  const intensityScale = isDirty ? 4.8 : 0.9;
+  const baseCount = ((speed + (isDirty ? 20 : 40)) / 140 + intensity * intensityScale) * dt * 60;
+  const count = Math.min(20, Math.max(isDirty ? 4 : 2, Math.floor(baseCount)));
   const backAngle = player.angle + Math.PI;
   const originDistance = CAR.height * 0.35;
   const originX = player.x + Math.cos(backAngle) * originDistance;
@@ -487,16 +488,16 @@ function emitSpray(player, speed, dt, intensity, mode) {
   for (let i = 0; i < count; i += 1) {
     const spread = (Math.random() - 0.5) * 0.9;
     const angle = backAngle + spread;
-    const velocity = (isDirty ? 130 : 60) + Math.random() * 140 + speed * (isDirty ? 0.5 : 0.2);
+    const velocity = (isDirty ? 140 : 70) + Math.random() * 140 + speed * (isDirty ? 0.55 : 0.25);
     particles.push({
       x: originX + (Math.random() - 0.5) * 8,
       y: originY + (Math.random() - 0.5) * 8,
       vx: Math.cos(angle) * velocity,
       vy: Math.sin(angle) * velocity,
       life: 0,
-      ttl: (isDirty ? 0.55 : 0.25) + Math.random() * 0.35,
-      size: (isDirty ? 3.5 : 1.1) + Math.random() * (isDirty ? 4 : 1.2),
-      alpha: (isDirty ? 0.8 : 0.3) + Math.random() * (isDirty ? 0.25 : 0.15),
+      ttl: (isDirty ? 0.6 : 0.3) + Math.random() * 0.35,
+      size: (isDirty ? 4.2 : 1.4) + Math.random() * (isDirty ? 4.8 : 1.6),
+      alpha: (isDirty ? 0.85 : 0.4) + Math.random() * (isDirty ? 0.25 : 0.18),
       mode
     });
   }
@@ -511,14 +512,19 @@ function updateParticles(dt) {
     const dy = player.y - last.y;
     const speed = dt > 0 ? Math.hypot(dx, dy) / dt : 0;
     lastPlayerPositions.set(player.id, { x: player.x, y: player.y });
-    const dirtSample = player.dirt ?? dirtAt(player.x, player.y);
+    const dirtSample = Math.max(player.dirt ?? 0, dirtAt(player.x, player.y));
     const prevIntensity = sprayIntensity.get(player.id) ?? 0;
-    const nextIntensity = Math.max(dirtSample, prevIntensity * 0.9);
+    const nextIntensity = Math.max(dirtSample, prevIntensity * 0.92);
     sprayIntensity.set(player.id, nextIntensity);
-    if (nextIntensity > 0.05) {
-      emitSpray(player, speed, dt, nextIntensity, "dirty");
+
+    const prevHold = sprayDirtyHold.get(player.id) ?? 0;
+    const nextHold = dirtSample > 0.02 ? 0.45 : Math.max(0, prevHold - dt);
+    sprayDirtyHold.set(player.id, nextHold);
+
+    if (nextHold > 0) {
+      emitSpray(player, speed, dt, Math.max(0.35, nextIntensity), "dirty");
     } else {
-      emitSpray(player, speed, dt, 0.12, "clean");
+      emitSpray(player, speed, dt, 0.08, "clean");
     }
   }
 
@@ -526,6 +532,7 @@ function updateParticles(dt) {
     if (!activeIds.has(id)) {
       lastPlayerPositions.delete(id);
       sprayIntensity.delete(id);
+      sprayDirtyHold.delete(id);
     }
   }
 
@@ -552,9 +559,9 @@ function drawParticles() {
     const lifeRatio = 1 - p.life / p.ttl;
     const alpha = p.alpha * lifeRatio;
     if (p.mode === "dirty") {
-      ctx.fillStyle = `rgba(120, 90, 60, ${alpha})`;
+      ctx.fillStyle = `rgba(180, 140, 90, ${alpha})`;
     } else {
-      ctx.fillStyle = `rgba(110, 200, 255, ${alpha})`;
+      ctx.fillStyle = `rgba(120, 210, 255, ${alpha})`;
     }
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, p.size * lifeRatio, 0, Math.PI * 2);

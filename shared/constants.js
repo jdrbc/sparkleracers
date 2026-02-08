@@ -27,7 +27,7 @@ export const DIRTY_SPEED_BOOST = 0.75;
 export const CLEAN_SPEED_PENALTY = 0.08;
 
 export const TICK_RATE = 60;
-export const STATE_RATE = 20;
+export const STATE_RATE = 30;
 
 export const CAR = {
   width: 32,

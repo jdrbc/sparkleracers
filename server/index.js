@@ -25,7 +25,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, perMessageDeflate: false });
 
 app.use(express.static(path.join(__dirname, "../client")));
 app.use("/shared", express.static(path.join(__dirname, "../shared")));
@@ -353,6 +353,9 @@ function sendFullDirt(socket) {
 }
 
 wss.on("connection", (socket) => {
+  if (socket._socket) {
+    socket._socket.setNoDelay(true);
+  }
   if (players.size >= MAX_PLAYERS) {
     socket.send(JSON.stringify({ type: "full" }));
     socket.close();
