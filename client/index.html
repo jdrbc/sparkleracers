@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SparkleRacers</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0f12;
+        color: #f8f8f8;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      }
+      #hud {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: #0f1720;
+        border-bottom: 1px solid #1f2a33;
+      }
+      #game {
+        display: block;
+        margin: 0 auto;
+        background: #10161c;
+        border: 1px solid #1f2a33;
+      }
+      #status {
+        text-align: center;
+        padding: 6px;
+        color: #9db1c4;
+        font-size: 14px;
+      }
+      .badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #1f2a33;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div>
+        <strong>SparkleRacers</strong> · <span id="playerId" class="badge">Connecting...</span>
+      </div>
+      <div id="laps">Laps: 0 / 3</div>
+    </div>
+    <canvas id="game" width="1200" height="800"></canvas>
+    <div id="status">Use WASD or arrow keys. Drive over dirty areas for speed.</div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
