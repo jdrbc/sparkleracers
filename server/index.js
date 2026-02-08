@@ -13,6 +13,7 @@ import {
   DIRTY_DECAY,
   DIRTY_RADIUS,
   DIRTY_SPEED_BOOST,
+  CLEAN_SPEED_PENALTY,
   TICK_RATE,
   STATE_RATE,
   CAR,
@@ -263,7 +264,8 @@ function stepPlayer(player, dt) {
   const steer = player.input.steer;
 
   const dirtValue = dirtAt(car.x, car.y);
-  const speedBoost = 1 + dirtValue * DIRTY_SPEED_BOOST;
+  car.dirtValue = dirtValue;
+  const speedBoost = 1 - CLEAN_SPEED_PENALTY + dirtValue * (DIRTY_SPEED_BOOST + CLEAN_SPEED_PENALTY);
 
   const accel = throttle * CAR.accel * speedBoost;
   const ax = Math.cos(car.angle) * accel;
@@ -273,7 +275,7 @@ function stepPlayer(player, dt) {
   car.vy += ay * dt;
 
   const speed = Math.hypot(car.vx, car.vy);
-  const turnScale = Math.min(1, speed / CAR.maxSpeed);
+  const turnScale = Math.max(0.2, Math.min(1, speed / CAR.maxSpeed));
   car.angle += steer * CAR.turnRate * turnScale * dt;
 
   car.vx *= CAR.friction;
@@ -322,7 +324,8 @@ function broadcastState(includeDirt) {
     y: player.car.y,
     angle: player.car.angle,
     lap: player.car.lap,
-    finished: player.car.finished
+    finished: player.car.finished,
+    dirt: player.car.dirtValue ?? 0
   }));
 
   const payload = {

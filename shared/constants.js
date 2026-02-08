@@ -8,22 +8,23 @@ export const TRACK = {
 
 export const START_LINE = {
   x1: TRACK.outer.cx,
-  y1: TRACK.outer.cy - TRACK.outer.ry + 40,
+  y1: TRACK.outer.cy - TRACK.outer.ry,
   x2: TRACK.outer.cx,
-  y2: TRACK.inner.cy - TRACK.inner.ry - 20
+  y2: TRACK.inner.cy - TRACK.inner.ry
 };
 
 export const CHECKPOINT_LINE = {
   x1: TRACK.outer.cx,
-  y1: TRACK.inner.cy + TRACK.inner.ry + 20,
+  y1: TRACK.inner.cy + TRACK.inner.ry,
   x2: TRACK.outer.cx,
-  y2: TRACK.outer.cy + TRACK.outer.ry - 40
+  y2: TRACK.outer.cy + TRACK.outer.ry
 };
 
 export const GRID_SIZE = 64;
 export const DIRTY_DECAY = 0.008;
-export const DIRTY_RADIUS = 2.6;
-export const DIRTY_SPEED_BOOST = 0.35;
+export const DIRTY_RADIUS = 1.8;
+export const DIRTY_SPEED_BOOST = 0.75;
+export const CLEAN_SPEED_PENALTY = 0.08;
 
 export const TICK_RATE = 60;
 export const STATE_RATE = 20;
