@@ -34,13 +34,22 @@ let nextId = 1;
 const MAX_PLAYERS = 2;
 let raceState = "lobby";
 let countdownTimer = null;
+let winnerId = null;
 
 const dirt = new Float32Array(GRID_SIZE * GRID_SIZE).fill(1);
 const pendingDirtUpdates = new Map();
 
 const startPositions = [
-  { x: TRACK.outer.cx - 40, y: START_LINE.y1 + 40, angle: Math.PI / 2 },
-  { x: TRACK.outer.cx + 40, y: START_LINE.y1 + 40, angle: Math.PI / 2 }
+  {
+    x: START_LINE.x1 - 70,
+    y: START_LINE.y1 + 20,
+    angle: 0
+  },
+  {
+    x: START_LINE.x1 - 70,
+    y: START_LINE.y2 - 20,
+    angle: 0
+  }
 ];
 
 function makeCar(index) {
@@ -59,11 +68,32 @@ function makeCar(index) {
   };
 }
 
+function resetRace() {
+  const racers = Array.from(players.values());
+  racers.forEach((player, index) => {
+    player.car = makeCar(index);
+    player.input = { throttle: 0, steer: 0 };
+    player.ready = false;
+    player.replayReady = false;
+  });
+  winnerId = null;
+  dirt.fill(1);
+  pendingDirtUpdates.clear();
+}
+
 function broadcast(payload) {
   const message = JSON.stringify(payload);
   for (const player of players.values()) {
     if (player.socket.readyState === 1) {
       player.socket.send(message);
+    }
+  }
+}
+
+function sendFullDirtAll() {
+  for (const player of players.values()) {
+    if (player.socket.readyState === 1) {
+      sendFullDirt(player.socket);
     }
   }
 }
@@ -184,9 +214,10 @@ function dirtIndexFor(x, y) {
 
 function applyDirtAt(x, y) {
   const radius = DIRTY_RADIUS;
+  const radiusCeil = Math.ceil(radius);
   const base = dirtIndexFor(x, y);
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
+  for (let dy = -radiusCeil; dy <= radiusCeil; dy += 1) {
+    for (let dx = -radiusCeil; dx <= radiusCeil; dx += 1) {
       const gx = base.gx + dx;
       const gy = base.gy + dy;
       if (gx < 0 || gy < 0 || gx >= GRID_SIZE || gy >= GRID_SIZE) continue;
@@ -195,7 +226,7 @@ function applyDirtAt(x, y) {
       if (dist > radius) continue;
       const current = dirt[index];
       if (current <= 0) continue;
-      const next = Math.max(0, current - DIRTY_DECAY * (1 - dist / radius));
+      const next = 0;
       if (next !== current) {
         dirt[index] = next;
         pendingDirtUpdates.set(index, next);
@@ -273,6 +304,15 @@ function stepPlayer(player, dt) {
   }
 
   updateLap(car);
+
+  if (car.finished && winnerId === null) {
+    winnerId = player.id;
+    raceState = "finished";
+    for (const racer of players.values()) {
+      racer.input.throttle = 0;
+      racer.input.steer = 0;
+    }
+  }
 }
 
 function broadcastState(includeDirt) {
@@ -287,7 +327,9 @@ function broadcastState(includeDirt) {
 
   const payload = {
     type: "state",
-    players: playersState
+    players: playersState,
+    raceState,
+    winnerId
   };
 
   if (includeDirt && pendingDirtUpdates.size > 0) {
@@ -320,6 +362,7 @@ wss.on("connection", (socket) => {
     socket,
     input: { throttle: 0, steer: 0 },
     ready: false,
+    replayReady: false,
     car: makeCar(players.size)
   };
 
@@ -366,10 +409,26 @@ wss.on("connection", (socket) => {
       player.input.throttle = Math.max(-1, Math.min(1, msg.throttle ?? 0));
       player.input.steer = Math.max(-1, Math.min(1, msg.steer ?? 0));
     }
+
+    if (msg.type === "play-again") {
+      if (raceState !== "finished") return;
+      player.replayReady = true;
+      const allReady = Array.from(players.values()).every((racer) => racer.replayReady);
+      if (allReady) {
+        resetRace();
+        raceState = "lobby";
+        sendFullDirtAll();
+        broadcastLobby();
+        startCountdown();
+      }
+    }
   });
 
   socket.on("close", () => {
     players.delete(id);
+    if (winnerId === id) {
+      winnerId = null;
+    }
     cancelCountdown();
     if (players.size < MAX_PLAYERS) {
       raceState = "lobby";

@@ -21,6 +21,10 @@ const lobbyPlayersEl = document.getElementById("lobbyPlayers");
 const readyBtn = document.getElementById("readyBtn");
 const countdownEl = document.getElementById("countdown");
 const countdownTextEl = document.getElementById("countdownText");
+const finishEl = document.getElementById("finish");
+const finishTitleEl = document.getElementById("finishTitle");
+const finishSubtitleEl = document.getElementById("finishSubtitle");
+const playAgainBtn = document.getElementById("playAgainBtn");
 
 const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
 const wsHost = location.host;
@@ -40,6 +44,7 @@ const state = {
   dirt: new Float32Array(GRID_SIZE * GRID_SIZE).fill(1),
   ready: false,
   canDrive: false,
+  replayReady: false,
   lobbyPlayers: [],
   keys: {
     up: false,
@@ -50,12 +55,20 @@ const state = {
   lastInput: { throttle: 0, steer: 0 }
 };
 
+const particles = [];
+const lastPlayerPositions = new Map();
+let lastFrameTime = performance.now();
+
 function setLobbyVisible(visible) {
   overlayEl.classList.toggle("hidden", !visible);
 }
 
 function setCountdownVisible(visible) {
   countdownEl.classList.toggle("hidden", !visible);
+}
+
+function setFinishVisible(visible) {
+  finishEl.classList.toggle("hidden", !visible);
 }
 
 function renderLobby() {
@@ -79,6 +92,11 @@ function updateReadyButton() {
   readyBtn.textContent = state.ready ? "Cancel" : "Ready";
 }
 
+function updatePlayAgainButton() {
+  playAgainBtn.textContent = state.replayReady ? "Waiting..." : "Play Again";
+  playAgainBtn.disabled = state.replayReady;
+}
+
 function sendReady() {
   if (!socket || socket.readyState !== 1) return;
   socket.send(
@@ -93,6 +111,17 @@ readyBtn.addEventListener("click", () => {
   state.ready = !state.ready;
   updateReadyButton();
   sendReady();
+});
+
+playAgainBtn.addEventListener("click", () => {
+  if (!socket || socket.readyState !== 1) return;
+  state.replayReady = true;
+  updatePlayAgainButton();
+  socket.send(
+    JSON.stringify({
+      type: "play-again"
+    })
+  );
 });
 
 if (socket) {
@@ -113,7 +142,9 @@ if (socket) {
     statusEl.textContent = "Press Ready in the lobby to start.";
     lobbyStatusEl.textContent = "Connected. Press Ready when you are set.";
     updateReadyButton();
+    updatePlayAgainButton();
     setLobbyVisible(true);
+    setFinishVisible(false);
   }
 
   if (msg.type === "full") {
@@ -128,6 +159,9 @@ if (socket) {
     if (msg.state === "lobby") {
       setLobbyVisible(true);
       setCountdownVisible(false);
+      setFinishVisible(false);
+      state.replayReady = false;
+      updatePlayAgainButton();
       if (msg.players.length < msg.maxPlayers) {
         lobbyStatusEl.textContent = "Waiting for another racer...";
       } else {
@@ -138,6 +172,7 @@ if (socket) {
 
   if (msg.type === "countdown") {
     setLobbyVisible(false);
+    setFinishVisible(false);
     if (msg.value < 0) {
       setCountdownVisible(false);
       state.canDrive = false;
@@ -168,9 +203,30 @@ if (socket) {
       if (player.id === state.id) {
         lapsEl.textContent = `Laps: ${player.lap} / ${LAPS}`;
         if (player.finished) {
-          statusEl.textContent = "Finished! Refresh to race again.";
+          statusEl.textContent = "Finished!";
         }
       }
+    }
+
+    if (msg.raceState === "finished") {
+      state.canDrive = false;
+      const winnerId = msg.winnerId;
+      if (winnerId === state.id) {
+        finishTitleEl.textContent = "You win!";
+      } else if (winnerId) {
+        finishTitleEl.textContent = `Player ${winnerId} wins!`;
+      } else {
+        finishTitleEl.textContent = "Race finished!";
+      }
+      finishSubtitleEl.textContent = "Press Play Again to rematch.";
+      setFinishVisible(true);
+      setCountdownVisible(false);
+      setLobbyVisible(false);
+      statusEl.textContent = "Race finished. Play again?";
+    } else {
+      setFinishVisible(false);
+      state.replayReady = false;
+      updatePlayAgainButton();
     }
 
     if (msg.dirt) {
@@ -190,6 +246,7 @@ if (socket) {
     state.canDrive = false;
     setLobbyVisible(true);
     setCountdownVisible(false);
+    setFinishVisible(false);
   });
 
   socket.addEventListener("error", () => {
@@ -199,6 +256,7 @@ if (socket) {
     state.canDrive = false;
     setLobbyVisible(true);
     setCountdownVisible(false);
+    setFinishVisible(false);
   });
 }
 
@@ -362,6 +420,88 @@ function drawDirt() {
   }
 }
 
+function dirtAt(x, y) {
+  const gx = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor((x / WORLD_WIDTH) * GRID_SIZE)));
+  const gy = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor((y / WORLD_HEIGHT) * GRID_SIZE)));
+  return state.dirt[gy * GRID_SIZE + gx];
+}
+
+function emitSpray(player, speed, dt) {
+  const dirtValue = dirtAt(player.x, player.y);
+  if (dirtValue < 0.12 || speed < 25) return;
+
+  const baseCount = (speed / 140 + dirtValue * 2.5) * dt * 60;
+  const count = Math.min(10, Math.max(1, Math.floor(baseCount)));
+  const backAngle = player.angle + Math.PI;
+  const originDistance = CAR.height * 0.35;
+  const originX = player.x + Math.cos(backAngle) * originDistance;
+  const originY = player.y + Math.sin(backAngle) * originDistance;
+
+  for (let i = 0; i < count; i += 1) {
+    const spread = (Math.random() - 0.5) * 0.9;
+    const angle = backAngle + spread;
+    const velocity = 90 + Math.random() * 140 + speed * 0.35;
+    particles.push({
+      x: originX + (Math.random() - 0.5) * 8,
+      y: originY + (Math.random() - 0.5) * 8,
+      vx: Math.cos(angle) * velocity,
+      vy: Math.sin(angle) * velocity,
+      life: 0,
+      ttl: 0.35 + Math.random() * 0.35,
+      size: 2 + Math.random() * 2.5,
+      alpha: 0.6 + Math.random() * 0.3
+    });
+  }
+}
+
+function updateParticles(dt) {
+  const activeIds = new Set();
+  for (const player of state.players.values()) {
+    activeIds.add(player.id);
+    const last = lastPlayerPositions.get(player.id) ?? { x: player.x, y: player.y };
+    const dx = player.x - last.x;
+    const dy = player.y - last.y;
+    const speed = dt > 0 ? Math.hypot(dx, dy) / dt : 0;
+    lastPlayerPositions.set(player.id, { x: player.x, y: player.y });
+    emitSpray(player, speed, dt);
+  }
+
+  for (const id of lastPlayerPositions.keys()) {
+    if (!activeIds.has(id)) {
+      lastPlayerPositions.delete(id);
+    }
+  }
+
+  for (let i = particles.length - 1; i >= 0; i -= 1) {
+    const p = particles[i];
+    p.life += dt;
+    if (p.life >= p.ttl) {
+      particles.splice(i, 1);
+      continue;
+    }
+    p.vx *= 0.9;
+    p.vy *= 0.9;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+}
+
+function drawParticles() {
+  if (particles.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const p of particles) {
+    const pos = worldToCanvas(p.x, p.y);
+    const lifeRatio = 1 - p.life / p.ttl;
+    const alpha = p.alpha * lifeRatio;
+    ctx.fillStyle = `rgba(120, 205, 255, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, p.size * lifeRatio, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawCars() {
   for (const player of state.players.values()) {
     const pos = worldToCanvas(player.x, player.y);
@@ -375,9 +515,15 @@ function drawCars() {
 }
 
 function loop() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawTrack();
   drawDirt();
+  updateParticles(dt);
+  drawParticles();
   drawCars();
   requestAnimationFrame(loop);
 }

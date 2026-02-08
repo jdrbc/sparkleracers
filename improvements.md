@@ -6,9 +6,9 @@
 - [x] **Start menu / lobby** — Title screen with ready-up; replace bare HUD text
 - [x] **Shaped track** — Polygon/spline-based track with curves instead of two rectangles
 - [x] **Track boundaries / walls** — Collision with track edges; bounce or slide along walls
-- [ ] **Finish screen + play again** — Winner banner with final time, "Play Again" button (no refresh)
-- [ ] **Clean** — Dirty areas supply speed boost, and are cleaned away as the players drive over them
-- [ ] **Spray particles** — Pressure-washer water spray trailing behind the car on dirty patches
+- [x] **Finish screen + play again** — Winner banner with final time, "Play Again" button (no refresh)
+- [x] **Clean** — Dirty areas supply speed boost, and are cleaned away as the players drive over them
+- [x] **Spray particles** — Pressure-washer water spray trailing behind the car on dirty patches
 
 ## 🛣️ Track & World
 

@@ -7,17 +7,17 @@ export const TRACK = {
 };
 
 export const START_LINE = {
-  x1: TRACK.outer.cx - 260,
-  y1: TRACK.outer.cy - TRACK.outer.ry + 60,
-  x2: TRACK.outer.cx + 260,
-  y2: TRACK.outer.cy - TRACK.outer.ry + 60
+  x1: TRACK.outer.cx,
+  y1: TRACK.outer.cy - TRACK.outer.ry + 40,
+  x2: TRACK.outer.cx,
+  y2: TRACK.inner.cy - TRACK.inner.ry - 20
 };
 
 export const CHECKPOINT_LINE = {
-  x1: TRACK.outer.cx - 260,
-  y1: TRACK.outer.cy + TRACK.outer.ry - 60,
-  x2: TRACK.outer.cx + 260,
-  y2: TRACK.outer.cy + TRACK.outer.ry - 60
+  x1: TRACK.outer.cx,
+  y1: TRACK.inner.cy + TRACK.inner.ry + 20,
+  x2: TRACK.outer.cx,
+  y2: TRACK.outer.cy + TRACK.outer.ry - 40
 };
 
 export const GRID_SIZE = 64;

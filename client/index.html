@@ -104,11 +104,29 @@
         cursor: pointer;
         transition: background 0.2s ease, border 0.2s ease;
       }
+      #playAgainBtn {
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid #2a3642;
+        background: #1f2a33;
+        color: #f8f8f8;
+        font-size: 15px;
+        cursor: pointer;
+        transition: background 0.2s ease, border 0.2s ease;
+      }
       #readyBtn:hover {
         background: #2a3642;
         border-color: #3b4a58;
       }
+      #playAgainBtn:hover {
+        background: #2a3642;
+        border-color: #3b4a58;
+      }
       #readyBtn:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      #playAgainBtn:disabled {
         cursor: not-allowed;
         opacity: 0.6;
       }
@@ -142,6 +160,13 @@
       </div>
       <div id="countdown" class="overlay overlay--countdown hidden">
         <div id="countdownText" class="countdown-text">3</div>
+      </div>
+      <div id="finish" class="overlay hidden">
+        <div class="lobby-card">
+          <div id="finishTitle" class="lobby-title">Winner!</div>
+          <div id="finishSubtitle" class="lobby-subtitle">Play again?</div>
+          <button id="playAgainBtn">Play Again</button>
+        </div>
       </div>
     </div>
     <div id="status">Use WASD or arrow keys. Drive over dirty areas for speed.</div>
