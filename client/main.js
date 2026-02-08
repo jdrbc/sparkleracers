@@ -15,6 +15,12 @@ const ctx = canvas.getContext("2d");
 const playerIdEl = document.getElementById("playerId");
 const lapsEl = document.getElementById("laps");
 const statusEl = document.getElementById("status");
+const overlayEl = document.getElementById("overlay");
+const lobbyStatusEl = document.getElementById("lobbyStatus");
+const lobbyPlayersEl = document.getElementById("lobbyPlayers");
+const readyBtn = document.getElementById("readyBtn");
+const countdownEl = document.getElementById("countdown");
+const countdownTextEl = document.getElementById("countdownText");
 
 const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
 const wsHost = location.host;
@@ -22,6 +28,8 @@ let socket = null;
 
 if (!wsHost) {
   statusEl.textContent = "Open via http://<host>:3000 (not file://).";
+  lobbyStatusEl.textContent = "Open via http://<host>:3000 (not file://).";
+  readyBtn.disabled = true;
 } else {
   socket = new WebSocket(`${wsProtocol}://${wsHost}`);
 }
@@ -30,6 +38,9 @@ const state = {
   id: null,
   players: new Map(),
   dirt: new Float32Array(GRID_SIZE * GRID_SIZE).fill(1),
+  ready: false,
+  canDrive: false,
+  lobbyPlayers: [],
   keys: {
     up: false,
     down: false,
@@ -39,9 +50,56 @@ const state = {
   lastInput: { throttle: 0, steer: 0 }
 };
 
+function setLobbyVisible(visible) {
+  overlayEl.classList.toggle("hidden", !visible);
+}
+
+function setCountdownVisible(visible) {
+  countdownEl.classList.toggle("hidden", !visible);
+}
+
+function renderLobby() {
+  lobbyPlayersEl.innerHTML = "";
+  for (const player of state.lobbyPlayers) {
+    const row = document.createElement("div");
+    row.className = "lobby-row";
+    const name = document.createElement("span");
+    const isYou = player.id === state.id;
+    name.textContent = isYou ? `Player ${player.id} (You)` : `Player ${player.id}`;
+    const status = document.createElement("span");
+    status.textContent = player.ready ? "Ready" : "Not Ready";
+    status.className = player.ready ? "lobby-ready" : "lobby-waiting";
+    row.appendChild(name);
+    row.appendChild(status);
+    lobbyPlayersEl.appendChild(row);
+  }
+}
+
+function updateReadyButton() {
+  readyBtn.textContent = state.ready ? "Cancel" : "Ready";
+}
+
+function sendReady() {
+  if (!socket || socket.readyState !== 1) return;
+  socket.send(
+    JSON.stringify({
+      type: "ready",
+      ready: state.ready
+    })
+  );
+}
+
+readyBtn.addEventListener("click", () => {
+  state.ready = !state.ready;
+  updateReadyButton();
+  sendReady();
+});
+
 if (socket) {
   socket.addEventListener("open", () => {
     statusEl.textContent = "Connected. Waiting for another racer...";
+    lobbyStatusEl.textContent = "Connected. Waiting for another racer...";
+    readyBtn.disabled = false;
   });
 }
 
@@ -52,11 +110,52 @@ if (socket) {
     state.id = msg.id;
     playerIdEl.textContent = `Player ${msg.id}`;
     lapsEl.textContent = `Laps: 0 / ${msg.laps}`;
-    statusEl.textContent = "Ready. Use WASD or arrows to drive.";
+    statusEl.textContent = "Press Ready in the lobby to start.";
+    lobbyStatusEl.textContent = "Connected. Press Ready when you are set.";
+    updateReadyButton();
+    setLobbyVisible(true);
   }
 
   if (msg.type === "full") {
     statusEl.textContent = "Room full. Open a new tab after a player leaves.";
+    lobbyStatusEl.textContent = "Room full. Open a new tab after a player leaves.";
+    readyBtn.disabled = true;
+  }
+
+  if (msg.type === "lobby") {
+    state.lobbyPlayers = msg.players;
+    renderLobby();
+    if (msg.state === "lobby") {
+      setLobbyVisible(true);
+      setCountdownVisible(false);
+      if (msg.players.length < msg.maxPlayers) {
+        lobbyStatusEl.textContent = "Waiting for another racer...";
+      } else {
+        lobbyStatusEl.textContent = "Both racers connected. Ready up!";
+      }
+    }
+  }
+
+  if (msg.type === "countdown") {
+    setLobbyVisible(false);
+    if (msg.value < 0) {
+      setCountdownVisible(false);
+      state.canDrive = false;
+      return;
+    }
+    setCountdownVisible(true);
+    if (msg.value > 0) {
+      countdownTextEl.textContent = `${msg.value}`;
+      state.canDrive = false;
+      state.lastInput = { throttle: 0, steer: 0 };
+    } else {
+      countdownTextEl.textContent = "GO!";
+      state.canDrive = true;
+      setTimeout(() => {
+        setCountdownVisible(false);
+      }, 700);
+      sendInput();
+    }
   }
 
   if (msg.type === "dirt-full") {
@@ -86,14 +185,25 @@ if (socket) {
 if (socket) {
   socket.addEventListener("close", () => {
     statusEl.textContent = "Disconnected. Refresh to reconnect.";
+    lobbyStatusEl.textContent = "Disconnected. Refresh to reconnect.";
+    readyBtn.disabled = true;
+    state.canDrive = false;
+    setLobbyVisible(true);
+    setCountdownVisible(false);
   });
 
   socket.addEventListener("error", () => {
     statusEl.textContent = "Connection error. Ensure the server is running and open http://<host>:3000.";
+    lobbyStatusEl.textContent = "Connection error. Check the server and refresh.";
+    readyBtn.disabled = true;
+    state.canDrive = false;
+    setLobbyVisible(true);
+    setCountdownVisible(false);
   });
 }
 
 function sendInput() {
+  if (!state.canDrive) return;
   const throttle = (state.keys.up ? 1 : 0) + (state.keys.down ? -1 : 0);
   const steer = (state.keys.right ? 1 : 0) + (state.keys.left ? -1 : 0);
 
@@ -174,28 +284,50 @@ function worldToCanvas(x, y) {
   };
 }
 
+function ellipseToCanvas(ellipse) {
+  return {
+    cx: (ellipse.cx / WORLD_WIDTH) * canvas.width,
+    cy: (ellipse.cy / WORLD_HEIGHT) * canvas.height,
+    rx: (ellipse.rx / WORLD_WIDTH) * canvas.width,
+    ry: (ellipse.ry / WORLD_HEIGHT) * canvas.height
+  };
+}
+
+function isOnTrack(x, y) {
+  const outer = TRACK.outer;
+  const inner = TRACK.inner;
+  const outerValue =
+    ((x - outer.cx) / outer.rx) ** 2 + ((y - outer.cy) / outer.ry) ** 2;
+  const innerValue =
+    ((x - inner.cx) / inner.rx) ** 2 + ((y - inner.cy) / inner.ry) ** 2;
+  return outerValue <= 1 && innerValue >= 1;
+}
+
 function drawTrack() {
   ctx.fillStyle = "#1d242c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const outer = worldToCanvas(TRACK.outer.x, TRACK.outer.y);
-  const outerW = (TRACK.outer.w / WORLD_WIDTH) * canvas.width;
-  const outerH = (TRACK.outer.h / WORLD_HEIGHT) * canvas.height;
+  const outer = ellipseToCanvas(TRACK.outer);
+  const inner = ellipseToCanvas(TRACK.inner);
 
   ctx.fillStyle = "#2a333b";
-  ctx.fillRect(outer.x, outer.y, outerW, outerH);
-
-  const inner = worldToCanvas(TRACK.inner.x, TRACK.inner.y);
-  const innerW = (TRACK.inner.w / WORLD_WIDTH) * canvas.width;
-  const innerH = (TRACK.inner.h / WORLD_HEIGHT) * canvas.height;
+  ctx.beginPath();
+  ctx.ellipse(outer.cx, outer.cy, outer.rx, outer.ry, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.fillStyle = "#0b0f12";
-  ctx.fillRect(inner.x, inner.y, innerW, innerH);
+  ctx.beginPath();
+  ctx.ellipse(inner.cx, inner.cy, inner.rx, inner.ry, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.strokeStyle = "#394653";
   ctx.lineWidth = 4;
-  ctx.strokeRect(outer.x, outer.y, outerW, outerH);
-  ctx.strokeRect(inner.x, inner.y, innerW, innerH);
+  ctx.beginPath();
+  ctx.ellipse(outer.cx, outer.cy, outer.rx, outer.ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(inner.cx, inner.cy, inner.rx, inner.ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
 
   drawLine(START_LINE, "#f7d154");
   drawLine(CHECKPOINT_LINE, "#56c0f7");
@@ -220,17 +352,14 @@ function drawDirt() {
       const index = gy * GRID_SIZE + gx;
       const dirt = state.dirt[index];
       if (dirt <= 0.02) continue;
+      const worldX = ((gx + 0.5) / GRID_SIZE) * WORLD_WIDTH;
+      const worldY = ((gy + 0.5) / GRID_SIZE) * WORLD_HEIGHT;
+      if (!isOnTrack(worldX, worldY)) continue;
       const alpha = Math.min(0.7, dirt * 0.7);
       ctx.fillStyle = `rgba(160, 118, 72, ${alpha})`;
       ctx.fillRect(gx * cellW, gy * cellH, cellW, cellH);
     }
   }
-
-  const inner = worldToCanvas(TRACK.inner.x, TRACK.inner.y);
-  const innerW = (TRACK.inner.w / WORLD_WIDTH) * canvas.width;
-  const innerH = (TRACK.inner.h / WORLD_HEIGHT) * canvas.height;
-  ctx.fillStyle = "#0b0f12";
-  ctx.fillRect(inner.x, inner.y, innerW, innerH);
 }
 
 function drawCars() {

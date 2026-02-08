@@ -2,22 +2,22 @@ export const WORLD_WIDTH = 1200;
 export const WORLD_HEIGHT = 800;
 
 export const TRACK = {
-  outer: { x: 80, y: 60, w: 1040, h: 680 },
-  inner: { x: 340, y: 240, w: 520, h: 320 }
+  outer: { cx: 600, cy: 400, rx: 520, ry: 320 },
+  inner: { cx: 600, cy: 400, rx: 300, ry: 160 }
 };
 
 export const START_LINE = {
-  x1: TRACK.outer.x + TRACK.outer.w / 2 - 60,
-  y1: TRACK.outer.y + 10,
-  x2: TRACK.outer.x + TRACK.outer.w / 2 + 60,
-  y2: TRACK.outer.y + 10
+  x1: TRACK.outer.cx - 260,
+  y1: TRACK.outer.cy - TRACK.outer.ry + 60,
+  x2: TRACK.outer.cx + 260,
+  y2: TRACK.outer.cy - TRACK.outer.ry + 60
 };
 
 export const CHECKPOINT_LINE = {
-  x1: TRACK.outer.x + TRACK.outer.w / 2 - 60,
-  y1: TRACK.outer.y + TRACK.outer.h - 10,
-  x2: TRACK.outer.x + TRACK.outer.w / 2 + 60,
-  y2: TRACK.outer.y + TRACK.outer.h - 10
+  x1: TRACK.outer.cx - 260,
+  y1: TRACK.outer.cy + TRACK.outer.ry - 60,
+  x2: TRACK.outer.cx + 260,
+  y2: TRACK.outer.cy + TRACK.outer.ry - 60
 };
 
 export const GRID_SIZE = 64;

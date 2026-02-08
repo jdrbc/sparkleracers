@@ -37,6 +37,90 @@
         border-radius: 999px;
         background: #1f2a33;
       }
+      #stage {
+        position: relative;
+        width: 1200px;
+        margin: 0 auto;
+      }
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 14, 18, 0.78);
+        backdrop-filter: blur(6px);
+        z-index: 10;
+      }
+      .overlay.hidden {
+        display: none;
+      }
+      .lobby-card {
+        width: min(560px, 90%);
+        background: #10161c;
+        border: 1px solid #1f2a33;
+        border-radius: 16px;
+        padding: 24px 28px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+        text-align: center;
+      }
+      .lobby-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .lobby-subtitle {
+        color: #9db1c4;
+        margin-bottom: 20px;
+      }
+      .lobby-players {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 20px;
+        text-align: left;
+      }
+      .lobby-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: #0f1720;
+        border: 1px solid #1f2a33;
+        font-size: 14px;
+      }
+      .lobby-ready {
+        color: #4ade80;
+      }
+      .lobby-waiting {
+        color: #fbbf24;
+      }
+      #readyBtn {
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid #2a3642;
+        background: #1f2a33;
+        color: #f8f8f8;
+        font-size: 15px;
+        cursor: pointer;
+        transition: background 0.2s ease, border 0.2s ease;
+      }
+      #readyBtn:hover {
+        background: #2a3642;
+        border-color: #3b4a58;
+      }
+      #readyBtn:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .overlay--countdown {
+        background: rgba(10, 14, 18, 0.55);
+      }
+      .countdown-text {
+        font-size: 80px;
+        font-weight: 800;
+        color: #f8f8f8;
+        text-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      }
     </style>
   </head>
   <body>
@@ -46,7 +130,20 @@
       </div>
       <div id="laps">Laps: 0 / 3</div>
     </div>
-    <canvas id="game" width="1200" height="800"></canvas>
+    <div id="stage">
+      <canvas id="game" width="1200" height="800"></canvas>
+      <div id="overlay" class="overlay">
+        <div class="lobby-card">
+          <div class="lobby-title">SparkleRacers</div>
+          <div id="lobbyStatus" class="lobby-subtitle">Connecting...</div>
+          <div id="lobbyPlayers" class="lobby-players"></div>
+          <button id="readyBtn" disabled>Ready</button>
+        </div>
+      </div>
+      <div id="countdown" class="overlay overlay--countdown hidden">
+        <div id="countdownText" class="countdown-text">3</div>
+      </div>
+    </div>
     <div id="status">Use WASD or arrow keys. Drive over dirty areas for speed.</div>
 
     <script type="module" src="./main.js"></script>

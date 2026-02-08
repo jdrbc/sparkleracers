@@ -31,13 +31,16 @@ app.use("/shared", express.static(path.join(__dirname, "../shared")));
 
 const players = new Map();
 let nextId = 1;
+const MAX_PLAYERS = 2;
+let raceState = "lobby";
+let countdownTimer = null;
 
 const dirt = new Float32Array(GRID_SIZE * GRID_SIZE).fill(1);
 const pendingDirtUpdates = new Map();
 
 const startPositions = [
-  { x: TRACK.outer.x + TRACK.outer.w / 2 - 40, y: TRACK.outer.y + 80, angle: Math.PI / 2 },
-  { x: TRACK.outer.x + TRACK.outer.w / 2 + 40, y: TRACK.outer.y + 80, angle: Math.PI / 2 }
+  { x: TRACK.outer.cx - 40, y: START_LINE.y1 + 40, angle: Math.PI / 2 },
+  { x: TRACK.outer.cx + 40, y: START_LINE.y1 + 40, angle: Math.PI / 2 }
 ];
 
 function makeCar(index) {
@@ -56,18 +59,105 @@ function makeCar(index) {
   };
 }
 
+function broadcast(payload) {
+  const message = JSON.stringify(payload);
+  for (const player of players.values()) {
+    if (player.socket.readyState === 1) {
+      player.socket.send(message);
+    }
+  }
+}
+
+function broadcastLobby() {
+  const lobbyPlayers = Array.from(players.values()).map((player) => ({
+    id: player.id,
+    ready: player.ready
+  }));
+  broadcast({
+    type: "lobby",
+    players: lobbyPlayers,
+    maxPlayers: MAX_PLAYERS,
+    state: raceState
+  });
+}
+
+function cancelCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  if (raceState === "countdown") {
+    raceState = "lobby";
+    broadcast({ type: "countdown", value: -1 });
+  }
+}
+
+function startCountdown() {
+  if (raceState !== "lobby") return;
+  raceState = "countdown";
+  let count = 3;
+  broadcast({ type: "countdown", value: count });
+  countdownTimer = setInterval(() => {
+    count -= 1;
+    if (count <= 0) {
+      broadcast({ type: "countdown", value: 0 });
+      raceState = "racing";
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      return;
+    }
+    broadcast({ type: "countdown", value: count });
+  }, 1000);
+}
+
+function tryStartRace() {
+  if (players.size !== MAX_PLAYERS) return;
+  const everyoneReady = Array.from(players.values()).every((player) => player.ready);
+  if (everyoneReady) {
+    startCountdown();
+  }
+}
+
+function ellipseValue(ellipse, x, y) {
+  return ((x - ellipse.cx) / ellipse.rx) ** 2 + ((y - ellipse.cy) / ellipse.ry) ** 2;
+}
+
 function isOnTrack(x, y) {
-  const inOuter =
-    x >= TRACK.outer.x &&
-    x <= TRACK.outer.x + TRACK.outer.w &&
-    y >= TRACK.outer.y &&
-    y <= TRACK.outer.y + TRACK.outer.h;
-  const inInner =
-    x >= TRACK.inner.x &&
-    x <= TRACK.inner.x + TRACK.inner.w &&
-    y >= TRACK.inner.y &&
-    y <= TRACK.inner.y + TRACK.inner.h;
-  return inOuter && !inInner;
+  const outerValue = ellipseValue(TRACK.outer, x, y);
+  const innerValue = ellipseValue(TRACK.inner, x, y);
+  return outerValue <= 1 && innerValue >= 1;
+}
+
+function resolveWallCollision(car) {
+  const outerValue = ellipseValue(TRACK.outer, car.x, car.y);
+  const innerValue = ellipseValue(TRACK.inner, car.x, car.y);
+  let boundary = null;
+  if (outerValue > 1) {
+    boundary = TRACK.outer;
+  } else if (innerValue < 1) {
+    boundary = TRACK.inner;
+  }
+
+  if (!boundary) return;
+
+  const dx = car.x - boundary.cx;
+  const dy = car.y - boundary.cy;
+  const denom = Math.sqrt((dx / boundary.rx) ** 2 + (dy / boundary.ry) ** 2);
+  if (denom === 0) return;
+  const scale = 1 / denom;
+  car.x = boundary.cx + dx * scale;
+  car.y = boundary.cy + dy * scale;
+
+  let nx = dx / (boundary.rx * boundary.rx);
+  let ny = dy / (boundary.ry * boundary.ry);
+  const nLen = Math.hypot(nx, ny);
+  if (nLen === 0) return;
+  nx /= nLen;
+  ny /= nLen;
+
+  const dot = car.vx * nx + car.vy * ny;
+  car.vx = (car.vx - 2 * dot * nx) * 0.45;
+  car.vy = (car.vy - 2 * dot * ny) * 0.45;
 }
 
 function segmentIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -176,6 +266,8 @@ function stepPlayer(player, dt) {
   car.x = Math.max(0, Math.min(WORLD_WIDTH, car.x));
   car.y = Math.max(0, Math.min(WORLD_HEIGHT, car.y));
 
+  resolveWallCollision(car);
+
   if (isOnTrack(car.x, car.y)) {
     applyDirtAt(car.x, car.y);
   }
@@ -203,12 +295,7 @@ function broadcastState(includeDirt) {
     pendingDirtUpdates.clear();
   }
 
-  const message = JSON.stringify(payload);
-  for (const player of players.values()) {
-    if (player.socket.readyState === 1) {
-      player.socket.send(message);
-    }
-  }
+  broadcast(payload);
 }
 
 function sendFullDirt(socket) {
@@ -221,7 +308,7 @@ function sendFullDirt(socket) {
 }
 
 wss.on("connection", (socket) => {
-  if (players.size >= 2) {
+  if (players.size >= MAX_PLAYERS) {
     socket.send(JSON.stringify({ type: "full" }));
     socket.close();
     return;
@@ -232,6 +319,7 @@ wss.on("connection", (socket) => {
     id,
     socket,
     input: { throttle: 0, steer: 0 },
+    ready: false,
     car: makeCar(players.size)
   };
 
@@ -250,6 +338,7 @@ wss.on("connection", (socket) => {
   );
 
   sendFullDirt(socket);
+  broadcastLobby();
 
   socket.on("message", (data) => {
     let msg;
@@ -259,7 +348,21 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (msg.type === "ready") {
+      player.ready = Boolean(msg.ready);
+      if (!player.ready && raceState === "countdown") {
+        cancelCountdown();
+      }
+      broadcastLobby();
+      tryStartRace();
+    }
+
     if (msg.type === "input") {
+      if (raceState !== "racing") {
+        player.input.throttle = 0;
+        player.input.steer = 0;
+        return;
+      }
       player.input.throttle = Math.max(-1, Math.min(1, msg.throttle ?? 0));
       player.input.steer = Math.max(-1, Math.min(1, msg.steer ?? 0));
     }
@@ -267,6 +370,11 @@ wss.on("connection", (socket) => {
 
   socket.on("close", () => {
     players.delete(id);
+    cancelCountdown();
+    if (players.size < MAX_PLAYERS) {
+      raceState = "lobby";
+    }
+    broadcastLobby();
   });
 });
 
@@ -278,9 +386,11 @@ setInterval(() => {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
 
-  for (const player of players.values()) {
-    if (!player.car.finished) {
-      stepPlayer(player, dt);
+  if (raceState === "racing") {
+    for (const player of players.values()) {
+      if (!player.car.finished) {
+        stepPlayer(player, dt);
+      }
     }
   }
 
